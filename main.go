@@ -80,6 +80,26 @@ func main() {
 	})
 
 	for {
+		go keyboard.Listen(func(key keys.Key) (stop bool, err error) {
+			switch key.Code {
+			case keys.Up:
+				dirbomboclatX = -1
+				dirbomboclatY = 0
+			case keys.Down:
+				dirbomboclatX = 1
+				dirbomboclatY = 0
+			case keys.Left:
+				dirbomboclatX = 0
+				dirbomboclatY = -1
+			case keys.Right:
+				dirbomboclatX = 0
+				dirbomboclatY = 1
+			case keys.CtrlC:
+				fmt.Print("\033[?25h")
+				os.Exit(0)
+			}
+			return false, nil
+		})
 
 		// composing the frame
 
