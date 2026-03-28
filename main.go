@@ -9,26 +9,32 @@ import (
 	"atomicgo.dev/keyboard/keys"
 )
 
-var width = 80
-var height = 40
-var dirbomboclatX = 0
-var dirbomboclatY = 0
+var width = 50
+var height = 25
 
 type charecter struct {
-	CurrentPosition []int
-	Charecter       string
+	PreviousPosition []int
+	CurrentPosition  []int
+	Charecter        string
 }
-
 type frames [][]string
-
 type velocity struct {
 	X int
 	Y int
 }
-
+type point struct {
+	X int
+	Y int
+}
+type hitbox struct {
+	TopLeft     point
+	BottomRight point
+}
 type sprite struct {
-	Charecters []charecter
-	Velocity   velocity
+	Velocity    velocity
+	Charecters  []string // since a string is already a slice of charecters this way it's 2d
+	Hitbox      hitbox
+	OriginPoint point
 }
 
 func drawFrame(frame frames) {
@@ -41,37 +47,34 @@ func drawFrame(frame frames) {
 	}
 	fmt.Print(frameString)
 }
-
 func clearScreen() {
 	fmt.Print("\033[H\033[2J")
 }
-
 func main() {
 
-	charecter1 := charecter{
-		CurrentPosition: []int{1, 1},
-		Charecter:       "# ",
-	}
-
-	charecter2 := charecter{
-		CurrentPosition: []int{1, 2},
-		Charecter:       "# ",
-	}
-
-	charecter3 := charecter{
-		CurrentPosition: []int{2, 1},
-		Charecter:       "# ",
-	}
-	charecter4 := charecter{
-		CurrentPosition: []int{2, 2},
-		Charecter:       "# ",
-	}
-
-	sprite1 := sprite{
-		Charecters: []charecter{charecter1, charecter2, charecter3, charecter4},
-		Velocity: velocity{
-			X: 0,
-			Y: 0,
+	sprites := []sprite{
+		{
+			OriginPoint: point{10, 10},
+			Velocity:    velocity{1, 1},
+			Hitbox:      hitbox{point{-6, 3}, point{5, -3}},
+			Charecters: []string{
+				"small slime",
+				"+---------+",
+				"| o     o |",
+				"|  \\___/  |",
+				"+---------+",
+			},
+		},
+		{
+			OriginPoint: point{10, 10},
+			Charecters: []string{
+				"  /\\/\\  ",
+				" |  | ",
+				"  \\  /  ",
+				"   \\/   ",
+			},
+			Hitbox:   hitbox{point{-2, 1}, point{2, -3}},
+			Velocity: velocity{1, 1},
 		},
 	}
 
@@ -79,17 +82,13 @@ func main() {
 	go keyboard.Listen(func(key keys.Key) (stop bool, err error) {
 		switch key.Code {
 		case keys.Up:
-			dirbomboclatX = 0
-			dirbomboclatY = 0
+			sprites[0].Velocity.Y += -1
 		case keys.Down:
-			dirbomboclatX = 1
-			dirbomboclatY = 0
+			sprites[0].Velocity.Y += 1
 		case keys.Left:
-			dirbomboclatX = 0
-			dirbomboclatY = -1
+			sprites[0].Velocity.X += -1
 		case keys.Right:
-			dirbomboclatX = 0
-			dirbomboclatY = 1
+			sprites[0].Velocity.X += 1
 		case keys.CtrlC:
 			fmt.Print("\033[?25h")
 			os.Exit(0)
@@ -98,55 +97,63 @@ func main() {
 	})
 
 	for {
-
+		clearScreen()
 		// composing the frame
-
 		var frame frames
 		for i := 0; i < height; i++ {
-
 			var currentRow []string
 			for j := 0; j < width; j++ {
-				currentRow = append(currentRow, " ")
+				currentRow = append(currentRow, "  ")
 			}
 			frame = append(frame, currentRow)
+
 		}
 
-		// out of bonds resetting
-		for i := range sprite1.Charecters {
+		for x := range sprites {
+			futurePositionX := sprites[x].OriginPoint.X + sprites[x].Velocity.X
+			futurePositionY := sprites[x].OriginPoint.Y + sprites[x].Velocity.Y
+			TopLeftFuturePosition := point{futurePositionX + sprites[x].Hitbox.TopLeft.X, futurePositionY + sprites[x].Hitbox.TopLeft.Y}
+			BottomRightFuturePosition := point{futurePositionX + sprites[x].Hitbox.BottomRight.X, futurePositionY + sprites[x].Hitbox.BottomRight.Y}
 
-			futurePositionX := sprite1.Charecters[i].CurrentPosition[0] + sprite1.Velocity.X
-			futurePositionY := sprite1.Charecters[i].CurrentPosition[1] + sprite1.Velocity.Y
-
-			// bounces back if out of bonds for x
-			if (futurePositionX > width-2) ||
-				(futurePositionX < 0) {
-				for j := 0; j < i; j++ {
-					sprite1.Charecters[j].CurrentPosition[0] += sprite1.Velocity.X * -2
-				}
-				futurePositionX += sprite1.Velocity.X * -2
-				sprite1.Velocity.X *= -1
+			if (TopLeftFuturePosition.X < 0) || (BottomRightFuturePosition.X > width-1) {
+				futurePositionX += sprites[x].Velocity.X * -2
+				sprites[x].Velocity.X *= -1
 			}
-			// bounces back if out of bonds for y
-			if (futurePositionY > height-2) ||
-				(futurePositionY < 0) {
 
-				for j := 0; j < i; j++ {
-
-					sprite1.Charecters[j].CurrentPosition[1] += sprite1.Velocity.Y * -2
-				}
-				futurePositionY += sprite1.Velocity.Y * -2
-				sprite1.Velocity.Y *= -1
+			if (BottomRightFuturePosition.Y < 0) || (TopLeftFuturePosition.Y > height-1) {
+				futurePositionY += sprites[x].Velocity.Y * -2
+				sprites[x].Velocity.Y *= -1
 			}
-			sprite1.Charecters[i].CurrentPosition[0] = futurePositionX
-			sprite1.Charecters[i].CurrentPosition[1] = futurePositionY
+
+			sprites[x].OriginPoint = point{futurePositionX, futurePositionY}
+
 		}
 
-		for j := range sprite1.Charecters {
-			frame[sprite1.Charecters[j].CurrentPosition[1]][sprite1.Charecters[j].CurrentPosition[0]] = sprite1.Charecters[j].Charecter
+		for x := range sprites {
+			originPoint := sprites[x].OriginPoint
+			charecters := sprites[x].Charecters
+			midRowIndex := len(sprites[x].Charecters) / 2
+
+			for rowNumber, row := range charecters {
+				relativeY := rowNumber - midRowIndex
+				midCharecterIndex := len(row) / 2
+				finalY := relativeY + originPoint.Y
+				if (finalY < 0) || (finalY > height-1) {
+					continue
+				}
+				for charecterIndex, charecter := range row {
+					relativeX := charecterIndex - midCharecterIndex
+					finalX := relativeX + originPoint.X
+					if (finalX > width-1) || (finalX < 0) {
+						continue
+					}
+					frame[finalY][finalX] = string(charecter)
+
+				}
+			}
 		}
 
 		drawFrame(frame)
-		time.Sleep(time.Millisecond * 10)
-		clearScreen()
+		time.Sleep(time.Millisecond * 40)
 	}
 }
