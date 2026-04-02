@@ -11,21 +11,19 @@ import (
 	// "atomicgo.dev/keyboard/keys"
 )
 
-var width = 120
-var height = 60
+var width = 60
+var height = 50
 
-var audioData []byte
-var audioPos int
-var partStart int
-var partSize int
+var sfxData []byte
+var sfxPos int
+var sfxPlaying bool
 var ctx *malgo.AllocatedContext
 
 func initAudio() {
-	f, _ := os.Open("song.wav")
+	f, _ := os.Open("hit.wav")
 	defer f.Close()
 	f.Seek(44, 0)
-	audioData, _ = io.ReadAll(f)
-	partSize = 44100 * 2 * 2 / 4
+	sfxData, _ = io.ReadAll(f)
 
 	ctx, _ = malgo.InitContext(nil, malgo.ContextConfig{}, nil)
 
@@ -34,29 +32,32 @@ func initAudio() {
 	deviceConfig.Playback.Channels = 2
 	deviceConfig.SampleRate = 44100
 
-	deviceCallbacks := malgo.DeviceCallbacks{
+	sfxCallbacks := malgo.DeviceCallbacks{
 		Data: func(pOutput, pInput []byte, frameCount uint32) {
+			if !sfxPlaying {
+				return
+			}
 			bytesNeeded := int(frameCount) * 4
-			partEnd := partStart + partSize
-			remaining := partEnd - audioPos
+			remaining := len(sfxData) - sfxPos
 			if remaining <= 0 {
+				sfxPlaying = false
 				return
 			}
 			if bytesNeeded > remaining {
 				bytesNeeded = remaining
 			}
-			copy(pOutput, audioData[audioPos:audioPos+bytesNeeded])
-			audioPos += bytesNeeded
+			copy(pOutput, sfxData[sfxPos:sfxPos+bytesNeeded])
+			sfxPos += bytesNeeded
 		},
 	}
 
-	device, _ := malgo.InitDevice(ctx.Context, deviceConfig, deviceCallbacks)
-	device.Start()
+	sfxDevice, _ := malgo.InitDevice(ctx.Context, deviceConfig, sfxCallbacks)
+	sfxDevice.Start()
 }
 
-func playNextPart() {
-	partStart += partSize
-	audioPos = partStart
+func playSound() {
+	sfxPos = 0
+	sfxPlaying = true
 }
 
 type Timer struct {
@@ -151,7 +152,6 @@ func (s sprite) relativeHitbox() hitbox {
 func main() {
 
 	initAudio()
-	playNextPart()
 
 	SlimeSprite := sprite{
 		OriginPoint: point{10, 10},
@@ -172,7 +172,7 @@ func main() {
 			"+---------+",
 		},
 		AbilityTimer: Timer{OriginalTime: 30, CurrentTime: 30},
-		Health:       100,
+		Health:       200,
 		Ability: func(s *sprite) {
 			return
 		},
@@ -200,7 +200,7 @@ func main() {
 		Hitbox:       hitbox{point{-1, -1}, point{2, 2}},
 		Velocity:     velocity{1, 1},
 		AbilityTimer: Timer{OriginalTime: 40, CurrentTime: 40},
-		Health:       50,
+		Health:       100,
 		Ability: func(s *sprite) {
 			s.Health += 5
 			for i := range sprites {
@@ -283,13 +283,11 @@ func main() {
 			BottomRightFuturePosition := point{futurePositionX + sprites[x].Hitbox.BottomRight.X, futurePositionY + sprites[x].Hitbox.BottomRight.Y}
 
 			if (TopLeftFuturePosition.X < 0) || (BottomRightFuturePosition.X > width-1) {
-				playNextPart()
 				futurePositionX += sprites[x].Velocity.X * -2
 				sprites[x].Velocity.X *= -1
 			}
 
 			if (BottomRightFuturePosition.Y > height-1) || (TopLeftFuturePosition.Y < 0) {
-				playNextPart()
 				futurePositionY += sprites[x].Velocity.Y * -2
 				sprites[x].Velocity.Y *= -1
 			}
@@ -321,9 +319,9 @@ func main() {
 					continue
 				}
 
+				playSound()
 				sprites[x].CollisionFunc(&sprites[x], &sprites[j])
 				sprites[j].CollisionFunc(&sprites[j], &sprites[x])
-				playNextPart()
 
 				if collisionBoxHeight == collisionBoxWidth {
 					sprites[x].Velocity.Y *= -1
@@ -384,6 +382,6 @@ func main() {
 
 		}
 		drawFrame(frame)
-		time.Sleep(time.Millisecond * 20)
+		time.Sleep(time.Millisecond * 17)
 	}
 }
