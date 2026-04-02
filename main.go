@@ -2,21 +2,74 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"time"
 
-	"atomicgo.dev/keyboard"
-	"atomicgo.dev/keyboard/keys"
+	"github.com/gen2brain/malgo"
+	// "atomicgo.dev/keyboard"
+	// "atomicgo.dev/keyboard/keys"
 )
 
-var width = 50
-var height = 25
+var width = 120
+var height = 60
+
+var audioData []byte
+var audioPos int
+var partStart int
+var partSize int
+var ctx *malgo.AllocatedContext
+
+func initAudio() {
+	f, _ := os.Open("song.wav")
+	defer f.Close()
+	f.Seek(44, 0)
+	audioData, _ = io.ReadAll(f)
+	partSize = 44100 * 2 * 2 / 4
+
+	ctx, _ = malgo.InitContext(nil, malgo.ContextConfig{}, nil)
+
+	deviceConfig := malgo.DefaultDeviceConfig(malgo.Playback)
+	deviceConfig.Playback.Format = malgo.FormatS16
+	deviceConfig.Playback.Channels = 2
+	deviceConfig.SampleRate = 44100
+
+	deviceCallbacks := malgo.DeviceCallbacks{
+		Data: func(pOutput, pInput []byte, frameCount uint32) {
+			bytesNeeded := int(frameCount) * 4
+			partEnd := partStart + partSize
+			remaining := partEnd - audioPos
+			if remaining <= 0 {
+				return
+			}
+			if bytesNeeded > remaining {
+				bytesNeeded = remaining
+			}
+			copy(pOutput, audioData[audioPos:audioPos+bytesNeeded])
+			audioPos += bytesNeeded
+		},
+	}
+
+	device, _ := malgo.InitDevice(ctx.Context, deviceConfig, deviceCallbacks)
+	device.Start()
+}
+
+func playNextPart() {
+	partStart += partSize
+	audioPos = partStart
+}
+
+type Timer struct {
+	CurrentTime  int
+	OriginalTime int
+}
 
 type charecter struct {
 	PreviousPosition []int
 	CurrentPosition  []int
 	Charecter        string
 }
+
 type frames [][]string
 type velocity struct {
 	X int
@@ -30,12 +83,27 @@ type hitbox struct {
 	TopLeft     point
 	BottomRight point
 }
-type sprite struct {
-	Velocity    velocity
-	Charecters  []string // since a string is already a slice of charecters this way it's 2d
-	Hitbox      hitbox
-	OriginPoint point
+
+type TimedEvent struct {
+	Timer Timer
+	Event func()
 }
+
+type sprite struct {
+	Velocity       velocity
+	Charecters     []string // since a string is already a slice of charecters this way it's 2d
+	HurtCharecters []string
+	Hitbox         hitbox
+	OriginPoint    point
+	AbilityTimer   Timer
+	Health         int
+	Ability        func(s *sprite)
+	CollisionFunc  func(meSprite *sprite, hitSprite *sprite)
+	Alive          bool
+	Name           string
+}
+
+var sprites []sprite
 
 func drawFrame(frame frames) {
 	var frameString string
@@ -50,51 +118,127 @@ func drawFrame(frame frames) {
 func clearScreen() {
 	fmt.Print("\033[H\033[2J")
 }
+
+func drawSprite(charecters []string, originPoint point, frame frames) {
+
+	midRowIndex := len(charecters) / 2
+	for rowNumber, row := range charecters {
+		relativeY := rowNumber - midRowIndex
+		midCharecterIndex := len(row) / 2
+		finalY := relativeY + originPoint.Y
+		if (finalY < 0) || (finalY > height-1) {
+			continue
+		}
+		for charecterIndex, charecter := range row {
+			relativeX := charecterIndex - midCharecterIndex
+			finalX := relativeX + originPoint.X
+			if (finalX > width-1) || (finalX < 0) {
+				continue
+			}
+			frame[finalY][finalX] = string(charecter)
+
+		}
+	}
+}
+
+func (s sprite) relativeHitbox() hitbox {
+	return hitbox{
+		TopLeft:     point{s.OriginPoint.X + s.Hitbox.TopLeft.X, s.OriginPoint.Y + s.Hitbox.TopLeft.Y},
+		BottomRight: point{s.OriginPoint.X + s.Hitbox.BottomRight.X, s.OriginPoint.Y + s.Hitbox.BottomRight.Y},
+	}
+}
+
 func main() {
 
-	sprites := []sprite{
-		{
-			OriginPoint: point{10, 10},
-			Velocity:    velocity{1, 1},
-			Hitbox:      hitbox{point{-6, 3}, point{5, -3}},
-			Charecters: []string{
-				"small slime",
-				"+---------+",
-				"| o     o |",
-				"|  \\___/  |",
-				"+---------+",
-			},
+	initAudio()
+	playNextPart()
+
+	SlimeSprite := sprite{
+		OriginPoint: point{10, 10},
+		Velocity:    velocity{1, 1},
+		Hitbox:      hitbox{point{-3, -3}, point{3, 3}},
+		Charecters: []string{
+			"small slime",
+			"+---------+",
+			"| o     o |",
+			"|  \\___/  |",
+			"+---------+",
 		},
-		{
-			OriginPoint: point{10, 10},
-			Charecters: []string{
-				"  /\\/\\  ",
-				" |  | ",
-				"  \\  /  ",
-				"   \\/   ",
-			},
-			Hitbox:   hitbox{point{-2, 1}, point{2, -3}},
-			Velocity: velocity{1, 1},
+		HurtCharecters: []string{
+			"small slime",
+			"+---------+",
+			"| o ___ o |",
+			"|  /   \\  |",
+			"+---------+",
 		},
+		AbilityTimer: Timer{OriginalTime: 30, CurrentTime: 30},
+		Health:       100,
+		Ability: func(s *sprite) {
+			return
+		},
+		CollisionFunc: func(meSprite, hitSprite *sprite) {
+			hitSprite.Health -= 20
+			meSprite.Health += 5
+			return
+		},
+		Alive: true,
+		Name:  "slime",
+	}
+
+	qwqSprite := sprite{
+		OriginPoint: point{30, 10},
+		Charecters: []string{
+			"___",
+			"qwq",
+			"___",
+		},
+		HurtCharecters: []string{
+			"___",
+			"╥﹏╥",
+			"___",
+		},
+		Hitbox:       hitbox{point{-1, -1}, point{2, 2}},
+		Velocity:     velocity{1, 1},
+		AbilityTimer: Timer{OriginalTime: 40, CurrentTime: 40},
+		Health:       50,
+		Ability: func(s *sprite) {
+			s.Health += 5
+			for i := range sprites {
+				if sprites[i].Name == "qwq" {
+					continue
+				}
+				sprites[i].Health -= 5
+			}
+		},
+		CollisionFunc: func(meSprite *sprite, hitSprite *sprite) {
+			return
+		},
+		Alive: true,
+		Name:  "qwq",
+	}
+
+	sprites = []sprite{
+		SlimeSprite,
+		qwqSprite,
 	}
 
 	// input listener
-	go keyboard.Listen(func(key keys.Key) (stop bool, err error) {
-		switch key.Code {
-		case keys.Up:
-			sprites[0].Velocity.Y += -1
-		case keys.Down:
-			sprites[0].Velocity.Y += 1
-		case keys.Left:
-			sprites[0].Velocity.X += -1
-		case keys.Right:
-			sprites[0].Velocity.X += 1
-		case keys.CtrlC:
-			fmt.Print("\033[?25h")
-			os.Exit(0)
-		}
-		return false, nil
-	})
+	// go keyboard.Listen(func(key keys.Key) (stop bool, err error) {
+	// 	switch key.Code {
+	// 	case keys.Up:
+	// 		sprites[0].Velocity.Y += -1
+	// 	case keys.Down:
+	// 		sprites[0].Velocity.Y += 1
+	// 	case keys.Left:
+	// 		sprites[0].Velocity.X += -1
+	// 	case keys.Right:
+	// 		sprites[0].Velocity.X += 1
+	// 	case keys.CtrlC:
+	// 		fmt.Print("\033[?25h")
+	// 		os.Exit(0)
+	// 	}
+	// 	return false, nil
+	// })
 
 	for {
 		clearScreen()
@@ -103,24 +247,49 @@ func main() {
 		for i := 0; i < height; i++ {
 			var currentRow []string
 			for j := 0; j < width; j++ {
-				currentRow = append(currentRow, "  ")
+				currentRow = append(currentRow, " ")
 			}
 			frame = append(frame, currentRow)
 
 		}
 
+		alive := []sprite{}
+
 		for x := range sprites {
+			if sprites[x].Health <= 0 {
+				continue
+			}
+
+			alive = append(alive, sprites[x])
+		}
+
+		sprites = alive
+
+		for x := range sprites {
+
+			fmt.Printf("%s's health : %d\n", sprites[x].Name, sprites[x].Health)
+
+			if sprites[x].AbilityTimer.CurrentTime == 0 {
+
+				sprites[x].Ability(&sprites[x])
+				sprites[x].AbilityTimer.CurrentTime = sprites[x].AbilityTimer.OriginalTime
+			}
+
+			sprites[x].AbilityTimer.CurrentTime--
+
 			futurePositionX := sprites[x].OriginPoint.X + sprites[x].Velocity.X
 			futurePositionY := sprites[x].OriginPoint.Y + sprites[x].Velocity.Y
 			TopLeftFuturePosition := point{futurePositionX + sprites[x].Hitbox.TopLeft.X, futurePositionY + sprites[x].Hitbox.TopLeft.Y}
 			BottomRightFuturePosition := point{futurePositionX + sprites[x].Hitbox.BottomRight.X, futurePositionY + sprites[x].Hitbox.BottomRight.Y}
 
 			if (TopLeftFuturePosition.X < 0) || (BottomRightFuturePosition.X > width-1) {
+				playNextPart()
 				futurePositionX += sprites[x].Velocity.X * -2
 				sprites[x].Velocity.X *= -1
 			}
 
-			if (BottomRightFuturePosition.Y < 0) || (TopLeftFuturePosition.Y > height-1) {
+			if (BottomRightFuturePosition.Y > height-1) || (TopLeftFuturePosition.Y < 0) {
+				playNextPart()
 				futurePositionY += sprites[x].Velocity.Y * -2
 				sprites[x].Velocity.Y *= -1
 			}
@@ -129,31 +298,92 @@ func main() {
 
 		}
 
-		for x := range sprites {
-			originPoint := sprites[x].OriginPoint
-			charecters := sprites[x].Charecters
-			midRowIndex := len(sprites[x].Charecters) / 2
+		alreadyCollidedSprites := make(map[int]int)
 
-			for rowNumber, row := range charecters {
-				relativeY := rowNumber - midRowIndex
-				midCharecterIndex := len(row) / 2
-				finalY := relativeY + originPoint.Y
-				if (finalY < 0) || (finalY > height-1) {
+		for x := range sprites {
+			// checking for collisions
+
+			checkerHitbox := sprites[x].relativeHitbox()
+			for j := range sprites {
+				if alreadyCollidedSprites[j] == x {
 					continue
 				}
-				for charecterIndex, charecter := range row {
-					relativeX := charecterIndex - midCharecterIndex
-					finalX := relativeX + originPoint.X
-					if (finalX > width-1) || (finalX < 0) {
-						continue
-					}
-					frame[finalY][finalX] = string(charecter)
-
+				if j == x {
+					continue
 				}
+				checkedHitbox := sprites[j].relativeHitbox()
+				collisionBoxWidth := min(checkerHitbox.BottomRight.X, checkedHitbox.BottomRight.X) - max(checkerHitbox.TopLeft.X, checkedHitbox.TopLeft.X)
+				if collisionBoxWidth < 0 || collisionBoxWidth > checkerHitbox.BottomRight.X-checkerHitbox.TopLeft.X {
+					continue
+				}
+				collisionBoxHeight := min(checkerHitbox.BottomRight.Y, checkedHitbox.BottomRight.Y) - max(checkerHitbox.TopLeft.Y, checkedHitbox.TopLeft.Y)
+				if collisionBoxHeight < 0 || collisionBoxHeight > checkerHitbox.BottomRight.Y-checkerHitbox.TopLeft.Y {
+					continue
+				}
+
+				sprites[x].CollisionFunc(&sprites[x], &sprites[j])
+				sprites[j].CollisionFunc(&sprites[j], &sprites[x])
+				playNextPart()
+
+				if collisionBoxHeight == collisionBoxWidth {
+					sprites[x].Velocity.Y *= -1
+					sprites[j].Velocity.Y *= -1
+					sprites[x].Velocity.X *= -1
+					sprites[j].Velocity.X *= -1
+
+					sprites[x].OriginPoint = point{
+						sprites[x].OriginPoint.X + sprites[x].Velocity.X*2,
+						sprites[x].OriginPoint.Y + sprites[x].Velocity.Y*2,
+					}
+					sprites[j].OriginPoint = point{
+						sprites[j].OriginPoint.X + sprites[j].Velocity.X*2,
+						sprites[j].OriginPoint.Y + sprites[j].Velocity.Y*2,
+					}
+					fmt.Println(collisionBoxHeight, collisionBoxWidth)
+					alreadyCollidedSprites[j] = x
+					continue
+				}
+				if collisionBoxHeight > collisionBoxWidth {
+					sprites[x].Velocity.X *= -1
+					sprites[j].Velocity.X *= -1
+
+					sprites[x].OriginPoint = point{
+						sprites[x].OriginPoint.X + sprites[x].Velocity.X*2,
+						sprites[x].OriginPoint.Y,
+					}
+					sprites[j].OriginPoint = point{
+						sprites[j].OriginPoint.X + sprites[j].Velocity.X*2,
+						sprites[j].OriginPoint.Y,
+					}
+					continue
+				}
+				sprites[x].Velocity.Y *= -1
+				sprites[j].Velocity.Y *= -1
+
+				sprites[x].OriginPoint = point{
+					sprites[x].OriginPoint.X,
+					sprites[x].OriginPoint.Y + sprites[x].Velocity.Y*2,
+				}
+				sprites[j].OriginPoint = point{
+					sprites[j].OriginPoint.X,
+					sprites[j].OriginPoint.Y + sprites[j].Velocity.Y*2,
+				}
+				fmt.Println(collisionBoxHeight, collisionBoxWidth)
+				alreadyCollidedSprites[j] = x
+
 			}
 		}
 
+		for x := range sprites {
+			// find hitbox and draw sprite
+			if sprites[x].Health < 20 {
+				drawSprite(sprites[x].HurtCharecters, sprites[x].OriginPoint, frame)
+				continue
+			}
+			drawSprite(sprites[x].Charecters, sprites[x].OriginPoint, frame)
+
+		}
 		drawFrame(frame)
-		time.Sleep(time.Millisecond * 40)
+		time.Sleep(time.Millisecond * 20)
 	}
 }
