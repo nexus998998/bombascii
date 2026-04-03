@@ -121,6 +121,13 @@ type sprite struct {
 
 var sprites []sprite
 
+func AbsInt(n int) int {
+	if n < 0 {
+		return -n
+	}
+	return n
+}
+
 func drawFrame(frame frames) {
 	var frameString string
 	for _, row := range frame {
@@ -205,29 +212,31 @@ func main() {
 	qwqSprite := sprite{
 		OriginPoint: point{30, 10},
 		Charecters: []string{
-			"  .oOOOOo.  ",
-			" oOOOOOOOOo ",
-			"oOOQQOOOOOOo",
-			"oQQQQOOOOOOo",
-			"oQQQQOOOOOXo",
-			"oQQQQOOOOOXo",
-			" oOOOOOOOXo ",
-			"  'oOOOOo'  ",
+			"   '.oOOOOOOOOo.'   ",
+			"  oOOOOOOOOOOOOOOo  ",
+			" oOOQQOOOOOOOOOOOOo ",
+			"oOQQQQQOOOOOOOOOOOOo ",
+			"oQQQQQQOOOOOOOOOOXXo",
+			"oQQQQQQOOOOOOOOOOXXo",
+			" ooOOOOOOOOOOOOOOXo ",
+			"  .oOOOOOOOOOOOoo.  ",
+			"    '.oOOOOOOOo.'   ",
 		},
 		HurtCharecters: []string{
-			"  .oOOOo.  ",
-			" oOOOO/OOo ",
-			"oO\\QQ/OOOOo",
-			"oQQQ'O#OOOo",
-			"o#;#''OOOXo",
-			"o#####O\\\\Xo",
-			" oO''#///o ",
-			"  'oOOOo'  ",
+			"   '.oOOOOOOOOo.'   ",
+			"  o\\\\O//OO#OOOOOOo  ",
+			" oO\\\\//OOO#OOOOOOOo ",
+			"oOQQ//\\OOO###O#OOOOo ",
+			"oQQ//\\\\OO###OOOOOXXo",
+			"oQQQQQQ\\\\OOOOOOOOXXo",
+			" ooOOOOO//OOOOOOOXo ",
+			"  .oOOO//OOOOOOoo.  ",
+			"    '.oOOOOOOOo.'   ",
 		},
 		Color:        blue,
 		HurtColor:    red,
-		Hitbox:       hitbox{point{-6, -4}, point{6, 4}},
-		Velocity:     velocity{1, 1},
+		Hitbox:       hitbox{point{-9, -4}, point{11, 5}},
+		Velocity:     velocity{2, 2},
 		AbilityTimer: Timer{OriginalTime: 40, CurrentTime: 40},
 		Health:       100,
 		Ability: func(s *sprite) {
@@ -361,11 +370,32 @@ func main() {
 				sprites[x].CollisionFunc(&sprites[x], &sprites[j])
 				sprites[j].CollisionFunc(&sprites[j], &sprites[x])
 
+				var rightMostAsciiIndex int
+				var leftMostAsciiIndex int
+				var upperAsciiIndex int
+				var bottomAsciiIndex int
+
+				if sprites[x].OriginPoint.X > sprites[j].OriginPoint.X {
+					rightMostAsciiIndex = x
+					leftMostAsciiIndex = j
+				} else {
+					rightMostAsciiIndex = j
+					leftMostAsciiIndex = x
+				}
+				if sprites[x].OriginPoint.Y > sprites[j].OriginPoint.Y {
+					upperAsciiIndex = j
+					bottomAsciiIndex = x
+				} else {
+					upperAsciiIndex = x
+					bottomAsciiIndex = j
+				}
+
 				if collisionBoxHeight == collisionBoxWidth {
-					sprites[x].Velocity.Y *= -1
-					sprites[j].Velocity.Y *= -1
-					sprites[x].Velocity.X *= -1
-					sprites[j].Velocity.X *= -1
+
+					sprites[rightMostAsciiIndex].Velocity.X = AbsInt(sprites[rightMostAsciiIndex].Velocity.X)
+					sprites[leftMostAsciiIndex].Velocity.X = AbsInt(sprites[leftMostAsciiIndex].Velocity.X) * -1
+					sprites[upperAsciiIndex].Velocity.Y = AbsInt(sprites[upperAsciiIndex].Velocity.Y) * -1
+					sprites[bottomAsciiIndex].Velocity.Y = AbsInt(sprites[bottomAsciiIndex].Velocity.Y)
 
 					sprites[x].OriginPoint = point{
 						sprites[x].OriginPoint.X + sprites[x].Velocity.X*2,
@@ -380,8 +410,8 @@ func main() {
 					continue
 				}
 				if collisionBoxHeight > collisionBoxWidth {
-					sprites[x].Velocity.X *= -1
-					sprites[j].Velocity.X *= -1
+					sprites[rightMostAsciiIndex].Velocity.X = AbsInt(sprites[rightMostAsciiIndex].Velocity.X)
+					sprites[leftMostAsciiIndex].Velocity.X = AbsInt(sprites[leftMostAsciiIndex].Velocity.X) * -1
 
 					sprites[x].OriginPoint = point{
 						sprites[x].OriginPoint.X + sprites[x].Velocity.X*2,
@@ -393,8 +423,8 @@ func main() {
 					}
 					continue
 				}
-				sprites[x].Velocity.Y *= -1
-				sprites[j].Velocity.Y *= -1
+				sprites[upperAsciiIndex].Velocity.Y = AbsInt(sprites[upperAsciiIndex].Velocity.Y) * -1
+				sprites[bottomAsciiIndex].Velocity.Y = AbsInt(sprites[bottomAsciiIndex].Velocity.Y)
 
 				sprites[x].OriginPoint = point{
 					sprites[x].OriginPoint.X,
@@ -413,13 +443,15 @@ func main() {
 		for x := range sprites {
 			// find hitbox and draw sprite
 			color := sprites[x].Color
+			charecters := sprites[x].Charecters
 			if sprites[x].Health < 20 {
 				color = sprites[x].HurtColor
+				charecters = sprites[x].HurtCharecters
 			}
 			if freezeTime > 0 {
 				color = impactColor
 			}
-			drawSprite(sprites[x].Charecters, sprites[x].OriginPoint, color, frame)
+			drawSprite(charecters, sprites[x].OriginPoint, color, frame)
 
 		}
 
