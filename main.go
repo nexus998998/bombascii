@@ -11,13 +11,26 @@ import (
 	// "atomicgo.dev/keyboard/keys"
 )
 
-var width = 60
-var height = 50
+var green = "\033[32m"
+var yellow = "\033[33m"
+var blue = "\033[34m"
+var red = "\033[31m"
+var reset = "\033[0m"
+var white = "\033[37m"
+
+var width = 110
+var height = 30
+var impactFrames = 10
+var frameRate = time.Millisecond * 13
+var impactColor = white
 
 var sfxData []byte
 var sfxPos int
 var sfxPlaying bool
 var ctx *malgo.AllocatedContext
+
+var freezeTime int
+var frozenFrame frames
 
 func initAudio() {
 	f, _ := os.Open("hit.wav")
@@ -102,6 +115,8 @@ type sprite struct {
 	CollisionFunc  func(meSprite *sprite, hitSprite *sprite)
 	Alive          bool
 	Name           string
+	Color          string
+	HurtColor      string
 }
 
 var sprites []sprite
@@ -120,7 +135,7 @@ func clearScreen() {
 	fmt.Print("\033[H\033[2J")
 }
 
-func drawSprite(charecters []string, originPoint point, frame frames) {
+func drawSprite(charecters []string, originPoint point, color string, frame frames) {
 
 	midRowIndex := len(charecters) / 2
 	for rowNumber, row := range charecters {
@@ -136,7 +151,7 @@ func drawSprite(charecters []string, originPoint point, frame frames) {
 			if (finalX > width-1) || (finalX < 0) {
 				continue
 			}
-			frame[finalY][finalX] = string(charecter)
+			frame[finalY][finalX] = color + string(charecter) + reset
 
 		}
 	}
@@ -181,23 +196,37 @@ func main() {
 			meSprite.Health += 5
 			return
 		},
-		Alive: true,
-		Name:  "slime",
+		Color:     green,
+		HurtColor: yellow,
+		Alive:     true,
+		Name:      "slime",
 	}
 
 	qwqSprite := sprite{
 		OriginPoint: point{30, 10},
 		Charecters: []string{
-			"___",
-			"qwq",
-			"___",
+			"  .oOOOOo.  ",
+			" oOOOOOOOOo ",
+			"oOOQQOOOOOOo",
+			"oQQQQOOOOOOo",
+			"oQQQQOOOOOXo",
+			"oQQQQOOOOOXo",
+			" oOOOOOOOXo ",
+			"  'oOOOOo'  ",
 		},
 		HurtCharecters: []string{
-			"___",
-			"╥﹏╥",
-			"___",
+			"  .oOOOo.  ",
+			" oOOOO/OOo ",
+			"oO\\QQ/OOOOo",
+			"oQQQ'O#OOOo",
+			"o#;#''OOOXo",
+			"o#####O\\\\Xo",
+			" oO''#///o ",
+			"  'oOOOo'  ",
 		},
-		Hitbox:       hitbox{point{-1, -1}, point{2, 2}},
+		Color:        blue,
+		HurtColor:    red,
+		Hitbox:       hitbox{point{-6, -4}, point{6, 4}},
 		Velocity:     velocity{1, 1},
 		AbilityTimer: Timer{OriginalTime: 40, CurrentTime: 40},
 		Health:       100,
@@ -242,6 +271,14 @@ func main() {
 
 	for {
 		clearScreen()
+
+		if freezeTime > 0 {
+			freezeTime--
+			drawFrame(frozenFrame)
+			time.Sleep(frameRate)
+			continue
+		}
+
 		// composing the frame
 		var frame frames
 		for i := 0; i < height; i++ {
@@ -318,8 +355,9 @@ func main() {
 				if collisionBoxHeight < 0 || collisionBoxHeight > checkerHitbox.BottomRight.Y-checkerHitbox.TopLeft.Y {
 					continue
 				}
-
+				// impact between 2 asciis here
 				playSound()
+				freezeTime = impactFrames
 				sprites[x].CollisionFunc(&sprites[x], &sprites[j])
 				sprites[j].CollisionFunc(&sprites[j], &sprites[x])
 
@@ -374,14 +412,21 @@ func main() {
 
 		for x := range sprites {
 			// find hitbox and draw sprite
+			color := sprites[x].Color
 			if sprites[x].Health < 20 {
-				drawSprite(sprites[x].HurtCharecters, sprites[x].OriginPoint, frame)
-				continue
+				color = sprites[x].HurtColor
 			}
-			drawSprite(sprites[x].Charecters, sprites[x].OriginPoint, frame)
+			if freezeTime > 0 {
+				color = impactColor
+			}
+			drawSprite(sprites[x].Charecters, sprites[x].OriginPoint, color, frame)
 
 		}
+
+		if freezeTime == impactFrames { // which means impact happened in this frame
+			frozenFrame = frame
+		}
 		drawFrame(frame)
-		time.Sleep(time.Millisecond * 17)
+		time.Sleep(frameRate)
 	}
 }
