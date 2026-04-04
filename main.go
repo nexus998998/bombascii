@@ -24,19 +24,81 @@ var impactFrames = 10
 var frameRate = time.Millisecond * 16
 var impactColor = white
 
-var sfxData []byte
-var sfxPos int
-var sfxPlaying bool
-var ctx *malgo.AllocatedContext
-
 var freezeTime int
 var frozenFrame frames
+var aliveTimers []*TimedEvent
 
 var AllTimers []*TimedEvent
-var SlimeSprite = sprite{
-	OriginPoint: point{10, 10},
-	Velocity:    velocity{1, 1},
-	Hitbox:      hitbox{point{-3, -3}, point{3, 3}},
+
+const numVoices = 4
+
+type audioVoice struct {
+	data    []byte
+	pos     int
+	playing bool
+}
+
+var voices [numVoices]audioVoice
+var currentVoice int
+var sfxFiles = map[string][]byte{}
+var ctx *malgo.AllocatedContext
+
+func loadSound(name string, file string) {
+	f, _ := os.Open(file)
+	defer f.Close()
+	f.Seek(44, 0)
+	data, _ := io.ReadAll(f)
+	sfxFiles[name] = data
+}
+
+func playSound(name string) {
+	voices[currentVoice].data = sfxFiles[name]
+	voices[currentVoice].pos = 0
+	voices[currentVoice].playing = true
+	currentVoice = (currentVoice + 1) % numVoices
+}
+
+func initAudio() {
+	loadSound("hit", "hit.wav")
+	loadSound("timeStop", "timestop.wav")
+
+	ctx, _ = malgo.InitContext(nil, malgo.ContextConfig{}, nil)
+
+	deviceConfig := malgo.DefaultDeviceConfig(malgo.Playback)
+	deviceConfig.Playback.Format = malgo.FormatS16
+	deviceConfig.Playback.Channels = 2
+	deviceConfig.SampleRate = 44100
+
+	for i := 0; i < numVoices; i++ {
+		i := i
+		callbacks := malgo.DeviceCallbacks{
+			Data: func(pOutput, pInput []byte, frameCount uint32) {
+				if !voices[i].playing {
+					return
+				}
+				bytesNeeded := int(frameCount) * 4
+				remaining := len(voices[i].data) - voices[i].pos
+				if remaining <= 0 {
+					voices[i].playing = false
+					return
+				}
+				if bytesNeeded > remaining {
+					bytesNeeded = remaining
+				}
+				copy(pOutput, voices[i].data[voices[i].pos:voices[i].pos+bytesNeeded])
+				voices[i].pos += bytesNeeded
+			},
+		}
+		device, _ := malgo.InitDevice(ctx.Context, deviceConfig, callbacks)
+		device.Start()
+	}
+}
+
+var sprite1 = sprite{
+	OriginPoint:    point{10, 10},
+	NormalVelocity: velocity{1, 1},
+	Velocity:       velocity{1, 1},
+	Hitbox:         hitbox{point{-3, -3}, point{3, 3}},
 	Charecters: []string{
 		"small slime",
 		"+---------+",
@@ -51,19 +113,20 @@ var SlimeSprite = sprite{
 		"|  /   \\  |",
 		"+---------+",
 	},
-	AbilityTimer: Timer{OriginalTime: 30, CurrentTime: 30},
-	Health:       200,
+	Health: 200,
 	CollisionFunc: func(meSprite, hitSprite *sprite) {
-		hitSprite.Health -= 20
-		meSprite.Health += 5
+		hitSprite.Health -= meSprite.Entity["damage"].(int)
 		return
 	},
 	Color:     green,
 	HurtColor: yellow,
 	Name:      "slime",
+	Entity: map[string]any{
+		"damage": 15,
+	},
 }
 
-var qwqSprite = sprite{
+var sprite2 = sprite{
 	OriginPoint: point{30, 10},
 	Charecters: []string{
 		"   '.oOOOOOOOOo.'   ",
@@ -87,57 +150,117 @@ var qwqSprite = sprite{
 		"  .oOOO//OOOOOOoo.  ",
 		"    '.oOOOOOOOo.'   ",
 	},
-	Color:        yellow,
-	HurtColor:    red,
-	Hitbox:       hitbox{point{-9, -4}, point{11, 5}},
-	Velocity:     velocity{1, 1},
-	AbilityTimer: Timer{OriginalTime: 40, CurrentTime: 40},
-	Health:       100,
+	Color:     yellow,
+	HurtColor: red,
+	Hitbox:    hitbox{point{-9, -4}, point{11, 5}},
+	Velocity:  velocity{1, 1},
+	Health:    100,
 	CollisionFunc: func(meSprite *sprite, hitSprite *sprite) {
 		return
 	},
 	Name: "sphere",
 }
 
-func initAudio() {
-	f, _ := os.Open("hit.wav")
-	defer f.Close()
-	f.Seek(44, 0)
-	sfxData, _ = io.ReadAll(f)
+var sprite3 = sprite{
+	OriginPoint: point{30, 10},
+	Charecters: []string{
+		"  _______  ",
+		" /''12'''\\ ",
+		"|''''|''''|",
+		"|9'''|'''3|",
+		"|'''''\\'''|",
+		"|''''''\\''|",
+		" \\___6___/ ",
+	},
+	HurtCharecters: []string{
+		"  _______  ",
+		" /''12''/  ",
+		"|''''|'/   ",
+		"|9###|''\\  ",
+		"|####'\\'\\ ",
+		"|''''''\\''|",
+		" \\___6___/ ",
+	},
+	Hitbox:         hitbox{point{-5, -4}, point{5, 4}},
+	Color:          blue,
+	HurtColor:      red,
+	Velocity:       velocity{1, 1},
+	NormalVelocity: velocity{1, 1},
+	Entity: map[string]any{
+		"normalDamage":       5,
+		"multipliedDamage":   25,
+		"multipliedVelocity": velocity{3, 3},
+		"normalVelocity":     velocity{1, 1},
+		"timeFrozen":         false,
+		"timeFreezeDuration": 60 * 2,
+	},
+	CollisionFunc: func(meSprite *sprite, hitSprite *sprite) {
+		if meSprite.Entity["timeFrozen"].(bool) == true {
+			hitSprite.Health -= meSprite.Entity["multipliedDamage"].(int)
+			meSprite.Health += hitSprite.Entity["damage"].(int)
+			return
+		}
+		hitSprite.Health -= meSprite.Entity["normalDamage"].(int)
 
-	ctx, _ = malgo.InitContext(nil, malgo.ContextConfig{}, nil)
-
-	deviceConfig := malgo.DefaultDeviceConfig(malgo.Playback)
-	deviceConfig.Playback.Format = malgo.FormatS16
-	deviceConfig.Playback.Channels = 2
-	deviceConfig.SampleRate = 44100
-
-	sfxCallbacks := malgo.DeviceCallbacks{
-		Data: func(pOutput, pInput []byte, frameCount uint32) {
-			if !sfxPlaying {
-				return
-			}
-			bytesNeeded := int(frameCount) * 4
-			remaining := len(sfxData) - sfxPos
-			if remaining <= 0 {
-				sfxPlaying = false
-				return
-			}
-			if bytesNeeded > remaining {
-				bytesNeeded = remaining
-			}
-			copy(pOutput, sfxData[sfxPos:sfxPos+bytesNeeded])
-			sfxPos += bytesNeeded
-		},
-	}
-
-	sfxDevice, _ := malgo.InitDevice(ctx.Context, deviceConfig, sfxCallbacks)
-	sfxDevice.Start()
+	},
+	Health: 200,
+	Name:   "time stopper",
 }
 
-func playSound() {
-	sfxPos = 0
-	sfxPlaying = true
+func timeContinue() {
+	for x := range sprites {
+		if sprites[x].Name == sprite3.Name {
+			sprites[x].Entity["timeFrozen"] = false
+			currVelocity := sprites[x].Velocity
+			multipliedVelocity := sprites[x].Entity["normalVelocity"].(velocity)
+			sprites[x].Velocity = velocity{
+				currVelocity.X / multipliedVelocity.X,
+				currVelocity.Y / multipliedVelocity.Y,
+			}
+
+		}
+		sprites[x].Velocity = sprites[x].NormalVelocity
+	}
+}
+
+func timeStop() {
+	exists := false
+	var TimeStopperIndex int
+	for x := range sprites {
+		if sprites[x].Name == sprite3.Name {
+			exists = true
+			TimeStopperIndex = x
+		}
+	}
+	if !exists {
+		return
+	}
+	playSound("timeStop")
+	aliveTimers = append(aliveTimers,
+		&TimedEvent{
+			Repeat: false,
+			Timer: Timer{
+				OriginalTime: sprite3.Entity["timeFreezeDuration"].(int),
+				CurrentTime:  sprite3.Entity["timeFreezeDuration"].(int),
+			},
+			Event: timeContinue,
+		},
+	)
+	sprites[TimeStopperIndex].Entity["timeFrozen"] = true
+	currVelocity := sprites[TimeStopperIndex].Velocity
+	multipliedVelocity := sprites[TimeStopperIndex].Entity["multipliedVelocity"].(velocity)
+	sprites[TimeStopperIndex].Velocity = velocity{
+		currVelocity.X * multipliedVelocity.X,
+		currVelocity.Y * multipliedVelocity.Y,
+	}
+	for x := range sprites {
+		if sprites[x].Name == sprite3.Name {
+			continue
+		}
+		sprites[x].Velocity = velocity{0, 0}
+
+		continue
+	}
 }
 
 type Timer struct {
@@ -173,6 +296,7 @@ type TimedEvent struct {
 
 type sprite struct {
 	Velocity       velocity
+	NormalVelocity velocity
 	Charecters     []string // since a string is already a slice of charecters this way it's 2d
 	HurtCharecters []string
 	Hitbox         hitbox
@@ -183,7 +307,7 @@ type sprite struct {
 	Name           string
 	Color          string
 	HurtColor      string
-	Entity         any
+	Entity         map[string]any
 }
 
 var sprites []sprite
@@ -303,21 +427,20 @@ func (s sprite) relativeHitbox() hitbox {
 }
 
 func main() {
-
-	initAudio()
-
 	sprites = []sprite{
-		SlimeSprite,
-		qwqSprite,
+		sprite1,
+		sprite3,
 	}
 
 	AllTimers = []*TimedEvent{
 		&TimedEvent{
-			Timer:  qwqSprite.AbilityTimer,
+			Timer:  Timer{60 * 6, 60 * 6},
 			Repeat: true,
-			Event:  sphereHealAbility,
+			Event:  timeStop,
 		},
 	}
+
+	initAudio()
 
 	for {
 
@@ -352,7 +475,7 @@ func main() {
 		sprites = alive // removing dead sprites
 
 		// ticks all timers
-		var aliveTimers []*TimedEvent
+		aliveTimers = []*TimedEvent{}
 		for _, timedEvent := range AllTimers {
 			timedEvent.Timer.CurrentTime--
 			if timedEvent.Timer.CurrentTime == 0 {
@@ -368,15 +491,12 @@ func main() {
 		}
 
 		AllTimers = aliveTimers
-
+		moveOriginPoints() // moves the ascii's origin points by their velocity
 		for x := range sprites {
 
 			fmt.Printf("%s's health : %d\n", sprites[x].Name, sprites[x].Health)
 
 			sprites[x].AbilityTimer.CurrentTime--
-
-			moveOriginPoints() // moves the ascii's origin points by their velocity
-
 		}
 
 		alreadyCollidedSprites := make(map[int]int)
@@ -404,7 +524,7 @@ func main() {
 				}
 				// impact between 2 asciis here
 				alreadyCollidedSprites[j] = x
-				playSound() // hit sound
+				playSound("hit") // hit sound
 				freezeTime = impactFrames
 				sprites[x].CollisionFunc(&sprites[x], &sprites[j])
 				sprites[j].CollisionFunc(&sprites[j], &sprites[x])
