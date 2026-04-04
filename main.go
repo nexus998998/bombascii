@@ -21,7 +21,7 @@ var white = "\033[37m"
 var width = 110
 var height = 30
 var impactFrames = 10
-var frameRate = time.Millisecond * 13
+var frameRate = time.Millisecond * 16
 var impactColor = white
 
 var sfxData []byte
@@ -113,10 +113,10 @@ type sprite struct {
 	Health         int
 	Ability        func(s *sprite)
 	CollisionFunc  func(meSprite *sprite, hitSprite *sprite)
-	Alive          bool
 	Name           string
 	Color          string
 	HurtColor      string
+	Entity         any
 }
 
 var sprites []sprite
@@ -128,8 +128,30 @@ func AbsInt(n int) int {
 	return n
 }
 
+func moveOriginPoints() {
+	for x := range sprites {
+		futurePositionX := sprites[x].OriginPoint.X + sprites[x].Velocity.X
+		futurePositionY := sprites[x].OriginPoint.Y + sprites[x].Velocity.Y
+		TopLeftFuturePosition := point{futurePositionX + sprites[x].Hitbox.TopLeft.X, futurePositionY + sprites[x].Hitbox.TopLeft.Y}
+		BottomRightFuturePosition := point{futurePositionX + sprites[x].Hitbox.BottomRight.X, futurePositionY + sprites[x].Hitbox.BottomRight.Y}
+
+		if (TopLeftFuturePosition.X < 0) || (BottomRightFuturePosition.X > width-1) {
+			futurePositionX += sprites[x].Velocity.X * -2
+			sprites[x].Velocity.X *= -1
+		}
+
+		if (BottomRightFuturePosition.Y > height-1) || (TopLeftFuturePosition.Y < 0) {
+			futurePositionY += sprites[x].Velocity.Y * -2
+			sprites[x].Velocity.Y *= -1
+		}
+
+		sprites[x].OriginPoint = point{futurePositionX, futurePositionY}
+	}
+
+}
+
 func drawFrame(frame frames) {
-	var frameString string
+	frameString := "\033[H\033[2J"
 	for _, row := range frame {
 		for _, charecter := range row {
 			frameString += charecter
@@ -137,9 +159,6 @@ func drawFrame(frame frames) {
 		frameString += "\r\n"
 	}
 	fmt.Print(frameString)
-}
-func clearScreen() {
-	fmt.Print("\033[H\033[2J")
 }
 
 func drawSprite(charecters []string, originPoint point, color string, frame frames) {
@@ -161,6 +180,29 @@ func drawSprite(charecters []string, originPoint point, color string, frame fram
 			frame[finalY][finalX] = color + string(charecter) + reset
 
 		}
+	}
+}
+
+func goRight(index int) {
+	sprites[index].Velocity.X = AbsInt(sprites[index].Velocity.X)
+}
+
+func goLeft(index int) {
+	sprites[index].Velocity.X = AbsInt(sprites[index].Velocity.X) * -1
+}
+
+func goUp(index int) {
+	sprites[index].Velocity.Y = AbsInt(sprites[index].Velocity.Y) * -1
+}
+
+func goDown(index int) {
+	sprites[index].Velocity.Y = AbsInt(sprites[index].Velocity.Y)
+}
+
+func (s sprite) moveBy(x int, y int) {
+	s.OriginPoint = point{
+		s.OriginPoint.X + x,
+		s.OriginPoint.Y + y,
 	}
 }
 
@@ -205,7 +247,6 @@ func main() {
 		},
 		Color:     green,
 		HurtColor: yellow,
-		Alive:     true,
 		Name:      "slime",
 	}
 
@@ -226,9 +267,9 @@ func main() {
 			"   '.oOOOOOOOOo.'   ",
 			"  o\\\\O//OO#OOOOOOo  ",
 			" oO\\\\//OOO#OOOOOOOo ",
-			"oOQQ//\\OOO###O#OOOOo ",
-			"oQQ//\\\\OO###OOOOOXXo",
-			"oQQQQQQ\\\\OOOOOOOOXXo",
+			"oOQQ//\\OO'''#O'OOOOo ",
+			"oQQ//\\\\OO##'''OOOXXo",
+			"oQQQQQQ\\\\'''OOOOOXXo",
 			" ooOOOOO//OOOOOOOXo ",
 			"  .oOOO//OOOOOOoo.  ",
 			"    '.oOOOOOOOo.'   ",
@@ -251,8 +292,7 @@ func main() {
 		CollisionFunc: func(meSprite *sprite, hitSprite *sprite) {
 			return
 		},
-		Alive: true,
-		Name:  "qwq",
+		Name: "sphere",
 	}
 
 	sprites = []sprite{
@@ -260,26 +300,7 @@ func main() {
 		qwqSprite,
 	}
 
-	// input listener
-	// go keyboard.Listen(func(key keys.Key) (stop bool, err error) {
-	// 	switch key.Code {
-	// 	case keys.Up:
-	// 		sprites[0].Velocity.Y += -1
-	// 	case keys.Down:
-	// 		sprites[0].Velocity.Y += 1
-	// 	case keys.Left:
-	// 		sprites[0].Velocity.X += -1
-	// 	case keys.Right:
-	// 		sprites[0].Velocity.X += 1
-	// 	case keys.CtrlC:
-	// 		fmt.Print("\033[?25h")
-	// 		os.Exit(0)
-	// 	}
-	// 	return false, nil
-	// })
-
 	for {
-		clearScreen()
 
 		if freezeTime > 0 {
 			freezeTime--
@@ -309,7 +330,7 @@ func main() {
 			alive = append(alive, sprites[x])
 		}
 
-		sprites = alive
+		sprites = alive // removing dead sprites
 
 		for x := range sprites {
 
@@ -323,22 +344,7 @@ func main() {
 
 			sprites[x].AbilityTimer.CurrentTime--
 
-			futurePositionX := sprites[x].OriginPoint.X + sprites[x].Velocity.X
-			futurePositionY := sprites[x].OriginPoint.Y + sprites[x].Velocity.Y
-			TopLeftFuturePosition := point{futurePositionX + sprites[x].Hitbox.TopLeft.X, futurePositionY + sprites[x].Hitbox.TopLeft.Y}
-			BottomRightFuturePosition := point{futurePositionX + sprites[x].Hitbox.BottomRight.X, futurePositionY + sprites[x].Hitbox.BottomRight.Y}
-
-			if (TopLeftFuturePosition.X < 0) || (BottomRightFuturePosition.X > width-1) {
-				futurePositionX += sprites[x].Velocity.X * -2
-				sprites[x].Velocity.X *= -1
-			}
-
-			if (BottomRightFuturePosition.Y > height-1) || (TopLeftFuturePosition.Y < 0) {
-				futurePositionY += sprites[x].Velocity.Y * -2
-				sprites[x].Velocity.Y *= -1
-			}
-
-			sprites[x].OriginPoint = point{futurePositionX, futurePositionY}
+			moveOriginPoints() // moves the ascii's origin points by their velocity
 
 		}
 
@@ -349,6 +355,7 @@ func main() {
 
 			checkerHitbox := sprites[x].relativeHitbox()
 			for j := range sprites {
+
 				if alreadyCollidedSprites[j] == x {
 					continue
 				}
@@ -365,7 +372,8 @@ func main() {
 					continue
 				}
 				// impact between 2 asciis here
-				playSound()
+				alreadyCollidedSprites[j] = x
+				playSound() // hit sound
 				freezeTime = impactFrames
 				sprites[x].CollisionFunc(&sprites[x], &sprites[j])
 				sprites[j].CollisionFunc(&sprites[j], &sprites[x])
@@ -392,20 +400,11 @@ func main() {
 
 				if collisionBoxHeight == collisionBoxWidth {
 
-					sprites[rightMostAsciiIndex].Velocity.X = AbsInt(sprites[rightMostAsciiIndex].Velocity.X)
-					sprites[leftMostAsciiIndex].Velocity.X = AbsInt(sprites[leftMostAsciiIndex].Velocity.X) * -1
-					sprites[upperAsciiIndex].Velocity.Y = AbsInt(sprites[upperAsciiIndex].Velocity.Y) * -1
-					sprites[bottomAsciiIndex].Velocity.Y = AbsInt(sprites[bottomAsciiIndex].Velocity.Y)
+					goLeft(leftMostAsciiIndex)
+					goRight(rightMostAsciiIndex)
 
-					sprites[x].OriginPoint = point{
-						sprites[x].OriginPoint.X + sprites[x].Velocity.X*2,
-						sprites[x].OriginPoint.Y + sprites[x].Velocity.Y*2,
-					}
-					sprites[j].OriginPoint = point{
-						sprites[j].OriginPoint.X + sprites[j].Velocity.X*2,
-						sprites[j].OriginPoint.Y + sprites[j].Velocity.Y*2,
-					}
-					fmt.Println(collisionBoxHeight, collisionBoxWidth)
+					sprites[x].moveBy(sprites[x].Velocity.X*2, sprites[x].Velocity.Y*2)
+					sprites[j].moveBy(sprites[j].Velocity.X*2, sprites[j].Velocity.Y*2)
 					alreadyCollidedSprites[j] = x
 					continue
 				}
@@ -413,29 +412,16 @@ func main() {
 					sprites[rightMostAsciiIndex].Velocity.X = AbsInt(sprites[rightMostAsciiIndex].Velocity.X)
 					sprites[leftMostAsciiIndex].Velocity.X = AbsInt(sprites[leftMostAsciiIndex].Velocity.X) * -1
 
-					sprites[x].OriginPoint = point{
-						sprites[x].OriginPoint.X + sprites[x].Velocity.X*2,
-						sprites[x].OriginPoint.Y,
-					}
-					sprites[j].OriginPoint = point{
-						sprites[j].OriginPoint.X + sprites[j].Velocity.X*2,
-						sprites[j].OriginPoint.Y,
-					}
+					sprites[x].moveBy(sprites[j].Velocity.X*2, 0)
+					sprites[j].moveBy(sprites[x].Velocity.X*2, 0)
 					continue
 				}
 				sprites[upperAsciiIndex].Velocity.Y = AbsInt(sprites[upperAsciiIndex].Velocity.Y) * -1
 				sprites[bottomAsciiIndex].Velocity.Y = AbsInt(sprites[bottomAsciiIndex].Velocity.Y)
 
-				sprites[x].OriginPoint = point{
-					sprites[x].OriginPoint.X,
-					sprites[x].OriginPoint.Y + sprites[x].Velocity.Y*2,
-				}
-				sprites[j].OriginPoint = point{
-					sprites[j].OriginPoint.X,
-					sprites[j].OriginPoint.Y + sprites[j].Velocity.Y*2,
-				}
+				sprites[x].moveBy(0, sprites[x].Velocity.Y*2)
+				sprites[j].moveBy(0, sprites[j].Velocity.Y*2)
 				fmt.Println(collisionBoxHeight, collisionBoxWidth)
-				alreadyCollidedSprites[j] = x
 
 			}
 		}
