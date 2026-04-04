@@ -32,6 +32,73 @@ var ctx *malgo.AllocatedContext
 var freezeTime int
 var frozenFrame frames
 
+var AllTimers []*TimedEvent
+var SlimeSprite = sprite{
+	OriginPoint: point{10, 10},
+	Velocity:    velocity{1, 1},
+	Hitbox:      hitbox{point{-3, -3}, point{3, 3}},
+	Charecters: []string{
+		"small slime",
+		"+---------+",
+		"| o     o |",
+		"|  \\___/  |",
+		"+---------+",
+	},
+	HurtCharecters: []string{
+		"small slime",
+		"+---------+",
+		"| o ___ o |",
+		"|  /   \\  |",
+		"+---------+",
+	},
+	AbilityTimer: Timer{OriginalTime: 30, CurrentTime: 30},
+	Health:       200,
+	CollisionFunc: func(meSprite, hitSprite *sprite) {
+		hitSprite.Health -= 20
+		meSprite.Health += 5
+		return
+	},
+	Color:     green,
+	HurtColor: yellow,
+	Name:      "slime",
+}
+
+var qwqSprite = sprite{
+	OriginPoint: point{30, 10},
+	Charecters: []string{
+		"   '.oOOOOOOOOo.'   ",
+		"  oOOOOOOOOOOOOOOo  ",
+		" oOOQQOOOOOOOOOOOOo ",
+		"oOQQQQQOOOOOOOOOOOOo ",
+		"oQQQQQQOOOOOOOOOOXXo",
+		"oQQQQQQOOOOOOOOOOXXo",
+		" ooOOOOOOOOOOOOOOXo ",
+		"  .oOOOOOOOOOOOoo.  ",
+		"    '.oOOOOOOOo.'   ",
+	},
+	HurtCharecters: []string{
+		"   '.oOOOOOOOOo.'   ",
+		"  o\\\\O//OO#OOOOOOo  ",
+		" oO\\\\//OOO#OOOOOOOo ",
+		"oOQQ//\\OO'''#O'OOOOo ",
+		"oQQ//\\\\OO##'''OOOXXo",
+		"oQQQQQQ\\\\'''OOOOOXXo",
+		" ooOOOOO//OOOOOOOXo ",
+		"  .oOOO//OOOOOOoo.  ",
+		"    '.oOOOOOOOo.'   ",
+	},
+	Color:        yellow,
+	HurtColor:    red,
+	Hitbox:       hitbox{point{-9, -4}, point{11, 5}},
+	Velocity:     velocity{1, 1},
+	AbilityTimer: Timer{OriginalTime: 40, CurrentTime: 40},
+	Health:       100,
+	CollisionFunc: func(meSprite *sprite, hitSprite *sprite) {
+		return
+	},
+	Name: "sphere",
+}
+
 func initAudio() {
 	f, _ := os.Open("hit.wav")
 	defer f.Close()
@@ -99,8 +166,9 @@ type hitbox struct {
 }
 
 type TimedEvent struct {
-	Timer Timer
-	Event func()
+	Timer  Timer
+	Repeat bool
+	Event  func()
 }
 
 type sprite struct {
@@ -111,7 +179,6 @@ type sprite struct {
 	OriginPoint    point
 	AbilityTimer   Timer
 	Health         int
-	Ability        func(s *sprite)
 	CollisionFunc  func(meSprite *sprite, hitSprite *sprite)
 	Name           string
 	Color          string
@@ -120,6 +187,28 @@ type sprite struct {
 }
 
 var sprites []sprite
+
+func sphereHealAbility() {
+	exists := false
+	for x := range sprites {
+		if sprites[x].Name == "sphere" {
+			exists = true
+		}
+	}
+
+	if !exists {
+		return
+	}
+
+	for x := range sprites {
+		if sprites[x].Name == "sphere" {
+			sprites[x].Health += 5
+			continue
+		}
+
+		sprites[x].Health -= 5
+	}
+}
 
 func AbsInt(n int) int {
 	if n < 0 {
@@ -217,87 +306,17 @@ func main() {
 
 	initAudio()
 
-	SlimeSprite := sprite{
-		OriginPoint: point{10, 10},
-		Velocity:    velocity{1, 1},
-		Hitbox:      hitbox{point{-3, -3}, point{3, 3}},
-		Charecters: []string{
-			"small slime",
-			"+---------+",
-			"| o     o |",
-			"|  \\___/  |",
-			"+---------+",
-		},
-		HurtCharecters: []string{
-			"small slime",
-			"+---------+",
-			"| o ___ o |",
-			"|  /   \\  |",
-			"+---------+",
-		},
-		AbilityTimer: Timer{OriginalTime: 30, CurrentTime: 30},
-		Health:       200,
-		Ability: func(s *sprite) {
-			return
-		},
-		CollisionFunc: func(meSprite, hitSprite *sprite) {
-			hitSprite.Health -= 20
-			meSprite.Health += 5
-			return
-		},
-		Color:     green,
-		HurtColor: yellow,
-		Name:      "slime",
-	}
-
-	qwqSprite := sprite{
-		OriginPoint: point{30, 10},
-		Charecters: []string{
-			"   '.oOOOOOOOOo.'   ",
-			"  oOOOOOOOOOOOOOOo  ",
-			" oOOQQOOOOOOOOOOOOo ",
-			"oOQQQQQOOOOOOOOOOOOo ",
-			"oQQQQQQOOOOOOOOOOXXo",
-			"oQQQQQQOOOOOOOOOOXXo",
-			" ooOOOOOOOOOOOOOOXo ",
-			"  .oOOOOOOOOOOOoo.  ",
-			"    '.oOOOOOOOo.'   ",
-		},
-		HurtCharecters: []string{
-			"   '.oOOOOOOOOo.'   ",
-			"  o\\\\O//OO#OOOOOOo  ",
-			" oO\\\\//OOO#OOOOOOOo ",
-			"oOQQ//\\OO'''#O'OOOOo ",
-			"oQQ//\\\\OO##'''OOOXXo",
-			"oQQQQQQ\\\\'''OOOOOXXo",
-			" ooOOOOO//OOOOOOOXo ",
-			"  .oOOO//OOOOOOoo.  ",
-			"    '.oOOOOOOOo.'   ",
-		},
-		Color:        blue,
-		HurtColor:    red,
-		Hitbox:       hitbox{point{-9, -4}, point{11, 5}},
-		Velocity:     velocity{2, 2},
-		AbilityTimer: Timer{OriginalTime: 40, CurrentTime: 40},
-		Health:       100,
-		Ability: func(s *sprite) {
-			s.Health += 5
-			for i := range sprites {
-				if sprites[i].Name == "qwq" {
-					continue
-				}
-				sprites[i].Health -= 5
-			}
-		},
-		CollisionFunc: func(meSprite *sprite, hitSprite *sprite) {
-			return
-		},
-		Name: "sphere",
-	}
-
 	sprites = []sprite{
 		SlimeSprite,
 		qwqSprite,
+	}
+
+	AllTimers = []*TimedEvent{
+		&TimedEvent{
+			Timer:  qwqSprite.AbilityTimer,
+			Repeat: true,
+			Event:  sphereHealAbility,
+		},
 	}
 
 	for {
@@ -332,15 +351,27 @@ func main() {
 
 		sprites = alive // removing dead sprites
 
+		// ticks all timers
+		var aliveTimers []*TimedEvent
+		for _, timedEvent := range AllTimers {
+			timedEvent.Timer.CurrentTime--
+			if timedEvent.Timer.CurrentTime == 0 {
+				timedEvent.Event()
+				if timedEvent.Repeat == true {
+					timedEvent.Timer.CurrentTime = timedEvent.Timer.OriginalTime
+					aliveTimers = append(aliveTimers, timedEvent)
+					continue
+				}
+				continue
+			}
+			aliveTimers = append(aliveTimers, timedEvent)
+		}
+
+		AllTimers = aliveTimers
+
 		for x := range sprites {
 
 			fmt.Printf("%s's health : %d\n", sprites[x].Name, sprites[x].Health)
-
-			if sprites[x].AbilityTimer.CurrentTime == 0 {
-
-				sprites[x].Ability(&sprites[x])
-				sprites[x].AbilityTimer.CurrentTime = sprites[x].AbilityTimer.OriginalTime
-			}
 
 			sprites[x].AbilityTimer.CurrentTime--
 
