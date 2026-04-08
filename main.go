@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"io"
+	"math/rand"
 	"os"
 	"time"
 
@@ -96,48 +97,55 @@ func initAudio() {
 
 var sprite1 = sprite{
 	OriginPoint:    point{10, 10},
-	NormalVelocity: velocity{1, 1},
-	Velocity:       velocity{1, 1},
-	Hitbox:         hitbox{point{-3, -3}, point{3, 3}},
+	NormalVelocity: velocity{2, 2},
+	Velocity:       velocity{2, 2},
+	Hitbox:         hitbox{point{-10, -5}, point{10, 5}},
 	Charecters: []string{
-		"small slime",
-		"+---------+",
-		"| o     o |",
-		"|  \\___/  |",
-		"+---------+",
+		" _   _ ____    _    ",
+		"| | | / ___|  / \\   ",
+		"| | | \\___ \\ / _ \\  ",
+		"| |_| |___) / ___ \\ ",
+		" \\___/|____/_/   \\_\\",
 	},
 	HurtCharecters: []string{
-		"small slime",
-		"+---------+",
-		"| o ___ o |",
-		"|  /   \\  |",
-		"+---------+",
+		" _   _ ____    _    ",
+		"| | | / ___|  / \\   ",
+		"| | | \\___ \\ / _ \\  ",
+		"| |_| |___) / ___ \\ ",
+		" \\___/|____/_/   \\_\\",
 	},
 	Health: 200,
 	CollisionFunc: func(meSprite, hitSprite *sprite) {
-		hitSprite.Health -= meSprite.Entity["damage"].(int)
+		if hitSprite.Name == sprite3.Name {
+			if hitSprite.Entity["timeFrozen"].(bool) == true {
+				return
+			}
+		}
+		randomDamage := rand.Intn(40)
+		hitSprite.Health -= randomDamage
 		return
 	},
-	Color:     green,
-	HurtColor: yellow,
-	Name:      "slime",
+	Color:     yellow,
+	HurtColor: red,
+	Name:      "USA",
 	Entity: map[string]any{
 		"damage": 15,
 	},
 }
 
 var sprite2 = sprite{
-	OriginPoint: point{30, 10},
+	OriginPoint:    point{30, 10},
+	NormalVelocity: velocity{1, 1},
 	Charecters: []string{
 		"   '.oOOOOOOOOo.'   ",
 		"  oOOOOOOOOOOOOOOo  ",
 		" oOOQQOOOOOOOOOOOOo ",
-		"oOQQQQQOOOOOOOOOOOOo ",
+		"oOQQQQQOOOOOOOOOOOOo",
 		"oQQQQQQOOOOOOOOOOXXo",
 		"oQQQQQQOOOOOOOOOOXXo",
 		" ooOOOOOOOOOOOOOOXo ",
 		"  .oOOOOOOOOOOOoo.  ",
-		"    '.oOOOOOOOo.'   ",
+		"   '.oOOOOOOOOo.'   ",
 	},
 	HurtCharecters: []string{
 		"   '.oOOOOOOOOo.'   ",
@@ -154,15 +162,19 @@ var sprite2 = sprite{
 	HurtColor: red,
 	Hitbox:    hitbox{point{-9, -4}, point{11, 5}},
 	Velocity:  velocity{1, 1},
-	Health:    100,
+	Health:    300,
 	CollisionFunc: func(meSprite *sprite, hitSprite *sprite) {
 		return
+
+	},
+	Entity: map[string]any{
+		"damage": 0,
 	},
 	Name: "sphere",
 }
 
 var sprite3 = sprite{
-	OriginPoint: point{30, 10},
+	OriginPoint: point{60, 10},
 	Charecters: []string{
 		"  _______  ",
 		" /''12'''\\ ",
@@ -184,11 +196,11 @@ var sprite3 = sprite{
 	Hitbox:         hitbox{point{-5, -4}, point{5, 4}},
 	Color:          blue,
 	HurtColor:      red,
-	Velocity:       velocity{1, 1},
+	Velocity:       velocity{-1, -1},
 	NormalVelocity: velocity{1, 1},
 	Entity: map[string]any{
-		"normalDamage":       5,
-		"multipliedDamage":   25,
+		"normalDamage":       7,
+		"multipliedDamage":   20,
 		"multipliedVelocity": velocity{3, 3},
 		"normalVelocity":     velocity{1, 1},
 		"timeFrozen":         false,
@@ -197,13 +209,12 @@ var sprite3 = sprite{
 	CollisionFunc: func(meSprite *sprite, hitSprite *sprite) {
 		if meSprite.Entity["timeFrozen"].(bool) == true {
 			hitSprite.Health -= meSprite.Entity["multipliedDamage"].(int)
-			meSprite.Health += hitSprite.Entity["damage"].(int)
 			return
 		}
 		hitSprite.Health -= meSprite.Entity["normalDamage"].(int)
 
 	},
-	Health: 200,
+	Health: 100,
 	Name:   "time stopper",
 }
 
@@ -427,17 +438,46 @@ func (s sprite) relativeHitbox() hitbox {
 }
 
 func main() {
+	spriteIsoPentane := sprite1
+	spriteIsoPentane.Name = "iran"
+	spriteIsoPentane.Charecters = []string{
+		" _                  ",
+		"(_)_ __ __ _ _ __   ",
+		"| | '__/ _` | '_ \\ ",
+		"| | | | (_| | | | | ",
+		"|_|_|  \\__,_|_| |_|",
+	}
+	spriteIsoPentane.HurtCharecters = []string{
+		" _                  ",
+		"(_)_ __ __ _ _ __   ",
+		"| | '__/ _` | '_ \\ ",
+		"| | | | (_| | | | | ",
+		"|_|_|  \\__,_|_| |_|",
+	}
+	spriteIsoPentane.Color = blue
+	spriteIsoPentane.Hitbox = hitbox{
+		TopLeft:     point{-8, -2},
+		BottomRight: point{8, 1},
+	}
+	spriteIsoPentane.OriginPoint = point{
+		40, 10,
+	}
 	sprites = []sprite{
 		sprite1,
-		sprite3,
+		spriteIsoPentane,
 	}
 
 	AllTimers = []*TimedEvent{
-		&TimedEvent{
-			Timer:  Timer{60 * 6, 60 * 6},
-			Repeat: true,
-			Event:  timeStop,
-		},
+		// &TimedEvent{
+		// 	Timer:  Timer{60 * 7, 60 * 7},
+		// 	Repeat: true,
+		// 	Event:  timeStop,
+		// },
+		// &TimedEvent{
+		// 	Timer:  Timer{60 * 7, 60 * 7},
+		// 	Repeat: true,
+		// 	Event:  sphereHealAbility,
+		// },
 	}
 
 	initAudio()
